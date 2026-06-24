@@ -1045,6 +1045,9 @@ void Bot::NewRound(void)
 	m_randomAttackTimer = time2 + crandomfloat(10.0f, 30.0f);
 	m_slowThinkTimer = time2 + crandomfloat(1.0f, 3.0f);
 	ResetStuck();
+	m_committedGoalIndex = -1;
+	m_lastPathRequestTime = 0.0f;
+	m_lastDeclineWaypoint = -1;
 
 	// reset waypoint
 	m_waypointTime = engine->GetTime() + 0.5f;

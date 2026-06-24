@@ -34,7 +34,7 @@ else()
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w -mmmx -msse -msse2 -mfpmath=sse -flto -Ofast -fvisibility=hidden -fno-rtti -pipe -mtune=generic -fomit-frame-pointer -fvisibility-inlines-hidden -fno-stack-protector -no-pie -fno-threadsafe-statics -pthread")
 	set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
- set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -m32")
+ set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -m32 -static-libstdc++ -static-libgcc")
 
 # Output dir
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/ebot)

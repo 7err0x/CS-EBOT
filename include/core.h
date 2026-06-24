@@ -569,6 +569,8 @@ public:
 	int m_waypointStuckCount{0}; // same waypoint stuck counter
 	int16_t m_lastStuckWaypointIndex{-1}; // last waypoint we stuck at
 	int16_t m_lastDeclineWaypoint{-1}; // last waypoint we declined/blacklisted
+	int16_t m_committedGoalIndex{-1}; // last path goal to reduce route thrashing
+	float m_lastPathRequestTime{0.0f}; // last async path request time
 	float m_waypointDistance{0.0f};
 
 	StuckCause m_stuckCause{STUCK_CAUSE_UNKNOWN}; // stuck kategorisi
@@ -671,6 +673,7 @@ public:
 	void FindPath(int16_t &srcIndex, int16_t &destIndex);
 	void FindShortestPath(int16_t &srcIndex, int16_t &destIndex);
 	void FindEscapePath(int16_t &srcIndex, const Vector &dangerOrigin);
+	bool RequestPathIfNeeded(const int16_t goalIndex, const bool forceShortest = false);
 	void CalculatePing(void);
 public:
 	entvars_t* pev{nullptr}; // pev

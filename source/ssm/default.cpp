@@ -58,18 +58,12 @@ void Bot::DefaultUpdate(void)
 					KnifeAttack();
 					int16_t index = g_clients[ENTINDEX(m_nearestEnemy) - 1].wp;
 					if (IsValidWaypoint(index))
-					{
-						m_currentGoalIndex = index;
-						FindPath(m_currentWaypointIndex, index);
-					}
+						RequestPathIfNeeded(index);
 					else
 					{
 						index = g_waypoint->FindNearest(m_nearestEnemy->v.origin);
 						if (IsValidWaypoint(index))
-						{
-							m_currentGoalIndex = index;
-							FindPath(m_currentWaypointIndex, index);
-						}
+							RequestPathIfNeeded(index);
 					}
 				}
 				else
@@ -79,23 +73,16 @@ void Bot::DefaultUpdate(void)
 			{
 				int16_t index = g_clients[ENTINDEX(m_nearestEnemy) - 1].wp;
 				if (IsValidWaypoint(index))
-				{
-					m_currentGoalIndex = index;
-					FindPath(m_currentWaypointIndex, index);
-				}
+					RequestPathIfNeeded(index);
 				else
 				{
 					index = g_waypoint->FindNearest(m_nearestEnemy->v.origin);
 					if (IsValidWaypoint(index))
-					{
-						m_currentGoalIndex = index;
-						FindPath(m_currentWaypointIndex, index);
-					}
+						RequestPathIfNeeded(index);
 					else
 					{
 						index = static_cast<int16_t>(crandomint(0, g_numWaypoints - 1));
-						m_currentGoalIndex = index;
-						FindPath(m_currentWaypointIndex, index);
+						RequestPathIfNeeded(index);
 					}
 				}
 			}
@@ -123,7 +110,7 @@ void Bot::DefaultUpdate(void)
 			{
 				KnifeAttack();
 				int16_t ref = FindGoalZombie();
-				FindPath(m_currentWaypointIndex, ref);
+				RequestPathIfNeeded(ref);
 			}
 		}
 

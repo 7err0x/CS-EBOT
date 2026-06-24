@@ -36,6 +36,7 @@ ConVar ebot_pathfinder_seed_min("ebot_pathfinder_seed_min", "0.9");
 ConVar ebot_pathfinder_seed_max("ebot_pathfinder_seed_max", "1.1");
 ConVar ebot_helicopter_width("ebot_helicopter_width", "54.0");
 ConVar ebot_use_pathfinding_for_avoid("ebot_use_pathfinding_for_avoid", "1");
+ConVar ebot_zombie_path_commit_time("ebot_zombie_path_commit_time", "4.0");
 
 int16_t Bot::FindGoalZombie(void)
 {
@@ -3195,9 +3196,7 @@ void Bot::CheckStuck(const Vector &directionNormal, const float finterval)
 				if (m_waypointStuckCount >= 3 && m_stuckTime > 7.0f && m_isSlowThink)
 				{
 					m_lastDeclineWaypoint = m_currentWaypointIndex;
-					// NOTE: actual blacklist record (WaypointStuckRecord) should be written
-					// to a BotManager-level or global container here.
-					// The penalty duration would be: m_waypointStuckCount * 15.0f (max 60.0f)
+					m_committedGoalIndex = -1;
 				}
 			}
 
@@ -3207,11 +3206,20 @@ void Bot::CheckStuck(const Vector &directionNormal, const float finterval)
 				Kill();
 			else if (m_stuckTime > 7.0f && m_isSlowThink)
 			{
-				if (IsValidWaypoint(m_currentWaypointIndex))
-					m_lastDeclineWaypoint = m_currentWaypointIndex;
+				const float time2 = engine->GetTime();
+				const float repathCooldown = m_isZombieBot ? ebot_zombie_path_commit_time.GetFloat() * 0.5f : 1.0f;
 
-				FindWaypoint();
-				FindPath(m_currentWaypointIndex, (!m_isZombieBot && IsValidWaypoint(m_zhCampPointIndex)) ? m_zhCampPointIndex : m_currentGoalIndex);
+				if ((time2 - m_lastPathRequestTime) >= repathCooldown)
+				{
+					if (IsValidWaypoint(m_currentWaypointIndex))
+					{
+						m_lastDeclineWaypoint = m_currentWaypointIndex;
+						m_committedGoalIndex = -1;
+					}
+
+					FindWaypoint();
+					RequestPathIfNeeded((!m_isZombieBot && IsValidWaypoint(m_zhCampPointIndex)) ? m_zhCampPointIndex : m_currentGoalIndex);
+				}
 			}
 		}
 
@@ -3789,6 +3797,39 @@ void Bot::ChangeWptIndex(const int16_t waypointIndex)
 }
 
 // checks if bot is blocked in his movement direction (excluding doors)
+bool Bot::RequestPathIfNeeded(const int16_t goalIndex, const bool forceShortest)
+{
+	if (!IsValidWaypoint(goalIndex))
+		return false;
+
+	if (!m_isZombieBot)
+	{
+		m_currentGoalIndex = goalIndex;
+		if (forceShortest)
+			FindShortestPath(m_currentWaypointIndex, m_currentGoalIndex);
+		else
+			FindPath(m_currentWaypointIndex, m_currentGoalIndex);
+		return true;
+	}
+
+	const float time2 = engine->GetTime();
+	const float commitTime = ebot_zombie_path_commit_time.GetFloat();
+
+	if (goalIndex == m_committedGoalIndex && !m_navNode.IsEmpty() && (time2 - m_lastPathRequestTime) < commitTime)
+		return false;
+
+	m_committedGoalIndex = goalIndex;
+	m_currentGoalIndex = goalIndex;
+	m_lastPathRequestTime = time2;
+
+	if (forceShortest)
+		FindShortestPath(m_currentWaypointIndex, m_currentGoalIndex);
+	else
+		FindPath(m_currentWaypointIndex, m_currentGoalIndex);
+
+	return true;
+}
+
 bool Bot::CantMoveForward(const Vector &normal)
 {
 	// first do a trace from the bot's eyes forward...
