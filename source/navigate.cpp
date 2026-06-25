@@ -30,13 +30,15 @@ constexpr int16_t pMax = static_cast<int16_t>(Const_MaxPathIndex);
 
 ConVar ebot_zombies_as_path_cost("ebot_zombie_count_as_path_cost", "1");
 ConVar ebot_has_semiclip("ebot_has_semiclip", "0");
-ConVar ebot_breakable_health_limit("ebot_breakable_health_limit", "3000.0");
+ConVar ebot_breakable_health_limit("ebot_breakable_health_limit", "1000.0");
 ConVar ebot_force_shortest_path("ebot_force_shortest_path", "0");
 ConVar ebot_pathfinder_seed_min("ebot_pathfinder_seed_min", "0.9");
 ConVar ebot_pathfinder_seed_max("ebot_pathfinder_seed_max", "1.1");
 ConVar ebot_helicopter_width("ebot_helicopter_width", "54.0");
 ConVar ebot_use_pathfinding_for_avoid("ebot_use_pathfinding_for_avoid", "1");
 ConVar ebot_zombie_path_commit_time("ebot_zombie_path_commit_time", "4.0");
+// >0 = multiply crouch-waypoint segment cost (lower prefers narrow/crouch routes); 0 = default (Rusher still avoids crouch).
+ConVar ebot_prefer_crouch_paths("ebot_prefer_crouch_paths", "0");
 
 int16_t Bot::FindGoalZombie(void)
 {
@@ -459,6 +461,9 @@ void Bot::DoWaypointNav(void)
 
 	if (m_waypoint.flags & WAYPOINT_CROUCH)
 	{
+		if (!m_isZombieBot && m_currentWeapon == Weapon::Knife)
+			SelectBestWeapon(true);
+
 		if (pev->flags & FL_DUCKING)
 		{
 			if (IsOnFloor())
@@ -1438,9 +1443,6 @@ inline const float GF_CostRusher(const int16_t &index, const int16_t &parent, co
 	if (parentFlags & WAYPOINT_DJUMP)
 		return 65355.0f;
 
-	if (parentFlags & WAYPOINT_CROUCH)
-		return HF_Auto(index, parent) * 2.0f;
-
 	return HF_Auto(index, parent);
 }
 
@@ -1665,7 +1667,17 @@ bool RunAsyncAStar(PathJob* job, CArray<AStar>& waypoints, LocalPriorityQueue& o
 				}
 			}
 
-			float g = currWaypoint->g + ((gcalc(currentIndex, self, flags, job->team, job->gravity, job->isZombie) * crandomfloatfast(seed, min, max)));
+			float segmentCost = gcalc(currentIndex, self, flags, job->team, job->gravity, job->isZombie);
+			if (flags & WAYPOINT_CROUCH)
+			{
+				const float crouchScale = ebot_prefer_crouch_paths.GetFloat();
+				if (crouchScale > 0.0f)
+					segmentCost *= crouchScale;
+				else if (job->personality == static_cast<int>(Personality::Rusher))
+					segmentCost *= 2.0f;
+			}
+
+			float g = currWaypoint->g + (segmentCost * crandomfloatfast(seed, min, max));
 			float f = g + hcalc(self, destIndex);
 
 			AStar *childWaypoint = &waypoints[self];
@@ -2343,18 +2355,18 @@ void Bot::CheckTouchEntity(edict_t *entity)
 		if (!m_isZombieBot && FClassnameIs(entity, "amxx_pallets"))
 			return;
 
-		// check lasermine team...
-		if (entity->v.iuser2)
+		// check lasermine team (iuser1 = owner, iuser2 = deploy step)...
+		if (FClassnameIs(entity, "lasermine"))
 		{
-			int ownerIndex = entity->v.iuser2; 
-			if (ownerIndex > 1 && ownerIndex <= engine->GetMaxClients())
+			if (entity->v.iuser2 < 1.0f)
+				return;
+
+			const int ownerIndex = static_cast<int>(entity->v.iuser1);
+			if (ownerIndex >= 1 && ownerIndex <= engine->GetMaxClients())
 			{
-				edict_t *owner = INDEXENT(ownerIndex - 1);
-				if (!FNullEnt(owner))
-				{
-					if (GetTeam(owner) == m_team)
-						return; 
-				}
+				edict_t *owner = INDEXENT(ownerIndex);
+				if (!FNullEnt(owner) && GetTeam(owner) == m_team)
+					return;
 			}
 		}
 

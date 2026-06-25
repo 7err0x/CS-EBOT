@@ -9,6 +9,23 @@ void Bot::DefaultUpdate(void)
 {
 	if (m_isZombieBot)
 	{
+		if (ShouldPrioritizeLasermines())
+		{
+			FindVisibleLasermines();
+
+			if (m_currentProcess == Process::DestroyBreakable && DestroyBreakableReq())
+				return;
+
+			if (!FNullEnt(m_breakableEntity)
+				&& IsEnemyLasermine(m_breakableEntity)
+				&& IsLasermineInLineOfSight(m_breakableEntity))
+			{
+				if (m_currentProcess == Process::Default)
+					SetProcess(Process::DestroyBreakable, "destroying visible lasermine", true, engine->GetTime() + 60.0f);
+				return;
+			}
+		}
+
 		m_aimingAtEnemy = false;
 
 		// nearest enemy never resets to nullptr, so bot always know where are alive humans

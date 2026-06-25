@@ -14,7 +14,8 @@ void Bot::DestroyBreakableUpdate(void)
 		return;
 	}
 
-	if (ebot_kill_breakables.GetBool())
+	// Lasermines must take real weapon damage (AMXX damage hooks). Instant kill is for map breakables only.
+	if (ebot_kill_breakables.GetBool() && !m_isZombieBot && !FClassnameIs(m_breakableEntity, "lasermine"))
 		m_breakableEntity->v.health = -1.0f;
 
 	LookAt(m_breakableOrigin);

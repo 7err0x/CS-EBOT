@@ -536,6 +536,7 @@ public:
 	Vector m_breakableOrigin{nullvec}; // origin of the breakable
 	edict_t *m_breakableEntity{nullptr}; // pointer to breakable entity
 	edict_t *m_ignoreEntity{nullptr}; // pointer to entity to ignore
+	bool m_prioritizeLasermines{false}; // rolled once per life from human/zombie priority multiplier (0–1)
 	edict_t *m_buttonEntity{nullptr}; // pointer to button entity
 
 	int16_t m_currentGoalIndex{-1}; // current goal index for default modes
@@ -665,7 +666,7 @@ public:
 	void KnifeAttack(void);
 	void FireWeapon(const float distance);
 
-	void SelectBestWeapon(void);
+	void SelectBestWeapon(const bool force = false);
 	void SelectKnife(void);
 	void SelectWeaponByName(const char *name);
 	int GetHighestWeapon(void);
@@ -790,6 +791,11 @@ public:
 	void FollowPath(void);
 	void FindFriendsAndEnemiens(void);
 	void FindEnemyEntities(void);
+	void FindVisibleLasermines(void);
+	bool IsEnemyLasermine(edict_t *entity) const;
+	bool IsLasermineInLineOfSight(edict_t *entity);
+	bool ShouldPrioritizeLasermines(void) const;
+	void RollLaserminePriority(void);
 
 	bool CheckWaypoint(void);
 

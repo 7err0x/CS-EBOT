@@ -982,7 +982,16 @@ void Bot::CheckSlowThink(void)
 				else if (m_currentWaypointIndex == m_zhCampPointIndex || m_currentWaypointIndex == m_myMeshWaypoint)
 					SelectBestWeapon();
 				else if (m_navNode.CanFollowPath() && m_navNode.HasNext())
-					SelectKnife();
+				{
+					bool crouchRoute = !!(m_waypoint.flags & WAYPOINT_CROUCH);
+					if (!crouchRoute && IsValidWaypoint(m_navNode.First()))
+						crouchRoute = !!(g_waypoint->m_paths[m_navNode.First()].flags & WAYPOINT_CROUCH);
+
+					if (crouchRoute || m_hasEnemiesNear || m_hasEntitiesNear)
+						SelectBestWeapon(true);
+					else
+						SelectKnife();
+				}
 			}
 		}
 	}
@@ -1042,6 +1051,8 @@ void Bot::CheckSlowThink(void)
 		if (m_isZombieBot != IsZombieEntity(GetEntity()))
 		{
 			m_isZombieBot = IsZombieEntity(GetEntity());
+			RollLaserminePriority();
+
 			m_navNode.Clear();
 			FindWaypoint();
 			FindEnemyEntities();
@@ -1101,14 +1112,23 @@ bool Bot::IsAttacking(const edict_t *player)
 void Bot::UpdateLooking(void)
 {
 	m_aimingAtEnemy = false;
+	const bool prioritizeLasermine = ShouldPrioritizeLasermines()
+		&& m_hasEntitiesNear
+		&& !FNullEnt(m_nearestEntity)
+		&& FClassnameIs(m_nearestEntity, "lasermine")
+		&& IsLasermineInLineOfSight(m_nearestEntity);
+
 	if (m_isZombieBot)
 	{
-		if (m_hasEntitiesNear && m_entityDistance < 384.0f && (m_entityDistance < m_enemyDistance || !m_hasEnemiesNear))
+		if (prioritizeLasermine || (m_hasEntitiesNear && m_entityDistance < 384.0f && (m_entityDistance < m_enemyDistance || !m_hasEnemiesNear)))
 		{
 			if (!FNullEnt(m_nearestEntity))
 			{
 				LookAt(GetBoxOrigin(m_nearestEntity));
-				FireWeapon(m_entityDistance);
+				if (FClassnameIs(m_nearestEntity, "lasermine"))
+					KnifeAttack();
+				else
+					FireWeapon(m_entityDistance);
 				return;
 			}
 		}
@@ -1131,7 +1151,7 @@ void Bot::UpdateLooking(void)
 		return;
 	}
 
-	if (m_hasEntitiesNear && (m_entityDistance < m_enemyDistance || !m_hasEnemiesNear))
+	if (prioritizeLasermine || (m_hasEntitiesNear && (m_entityDistance < m_enemyDistance || !m_hasEnemiesNear)))
 	{
 		if (!FNullEnt(m_nearestEntity))
 		{

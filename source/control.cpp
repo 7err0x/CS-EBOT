@@ -1015,6 +1015,7 @@ void Bot::NewRound(void)
 
 	m_team = GetTeam(GetEntity());
 	m_isZombieBot = IsZombieEntity(GetEntity());
+	RollLaserminePriority();
 
 	m_prevTravelFlags = 0;
 	m_currentTravelFlags = 0;

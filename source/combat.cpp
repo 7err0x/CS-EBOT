@@ -24,8 +24,14 @@
 
 #include "../include/core.h"
 
+extern ConVar ebot_breakable_health_limit;
+extern ConVar ebot_kill_breakables;
+
 ConVar ebot_zombie_wall_hack("ebot_zombie_wall_hack", "0");
 ConVar ebot_dark_mode("ebot_dark_mode", "0");
+ConVar ebot_human_lasermine_priority("ebot_human_lasermine_priority", "0.2");
+ConVar ebot_zombie_lasermine_priority("ebot_zombie_lasermine_priority", "0.2");
+ConVar ebot_zombie_lasermine_max_distance("ebot_zombie_lasermine_max_distance", "96");
 
 int Bot::GetNearbyFriendsNearPosition(const Vector& origin, const float radius)
 {
@@ -255,6 +261,114 @@ void Bot::FindFriendsAndEnemiens(void)
 	}
 }
 
+bool Bot::IsEnemyLasermine(edict_t *entity) const
+{
+	if (FNullEnt(entity))
+		return false;
+
+	if (!FClassnameIs(entity, "lasermine"))
+		return false;
+
+	if (entity->v.takedamage == DAMAGE_NO)
+		return false;
+
+	if (entity->v.effects & EF_NODRAW)
+		return false;
+
+	if (!(entity->v.health > 0.0f && entity->v.health < ebot_breakable_health_limit.GetFloat()))
+		return false;
+
+	// LaserTripmine: iuser1 = owner (player index), iuser2 = deploy step (>= 1 when armed).
+	if (entity->v.iuser2 < 1.0f)
+		return false;
+
+	const int ownerIndex = static_cast<int>(entity->v.iuser1);
+	if (ownerIndex >= 1 && ownerIndex <= engine->GetMaxClients())
+	{
+		edict_t *owner = INDEXENT(ownerIndex);
+		if (!FNullEnt(owner) && GetTeam(owner) == m_team)
+			return false;
+	}
+
+	return true;
+}
+
+bool Bot::IsLasermineInLineOfSight(edict_t *entity)
+{
+	if (FNullEnt(entity))
+		return false;
+
+	const Vector target = GetBoxOrigin(entity);
+	TraceResult tr{};
+	TraceLine(EyePosition(), target, TraceIgnore::Nothing, GetEntity(), &tr);
+
+	return !FNullEnt(tr.pHit) && tr.pHit == entity;
+}
+
+bool Bot::ShouldPrioritizeLasermines(void) const
+{
+	return m_prioritizeLasermines;
+}
+
+void Bot::RollLaserminePriority(void)
+{
+	const float chance = m_isZombieBot
+		? ebot_zombie_lasermine_priority.GetFloat()
+		: ebot_human_lasermine_priority.GetFloat();
+	const float t = cclampf(chance, 0.0f, 1.0f);
+	m_prioritizeLasermines = t > 0.0f && crandomfloat(0.0f, 1.0f) < t;
+}
+
+void Bot::FindVisibleLasermines(void)
+{
+	if (g_roundEnded || !ShouldPrioritizeLasermines())
+		return;
+
+	const bool zombieMode = m_isZombieBot;
+	const float maxDist = zombieMode ? ebot_zombie_lasermine_max_distance.GetFloat() : 4096.0f;
+	const Vector myOrigin = EyePosition();
+	edict_t *best = nullptr;
+	float bestDistSq = squaredf(maxDist);
+
+	const int maxEnt = NUMBER_OF_ENTITIES();
+	for (int i = engine->GetMaxClients() + 1; i < maxEnt; i++)
+	{
+		edict_t *entity = INDEXENT(i);
+		if (FNullEnt(entity))
+			continue;
+
+		if (!IsEnemyLasermine(entity))
+			continue;
+
+		if (!IsLasermineInLineOfSight(entity))
+			continue;
+
+		const Vector origin = GetBoxOrigin(entity);
+		const float distSq = (myOrigin - origin).GetLengthSquared();
+		if (distSq >= bestDistSq)
+			continue;
+
+		bestDistSq = distSq;
+		best = entity;
+	}
+
+	if (FNullEnt(best))
+		return;
+
+	m_nearestEntity = best;
+	m_entityOrigin = GetBoxOrigin(best);
+	m_entityDistance = csqrtf(bestDistSq);
+	m_hasEntitiesNear = true;
+	m_entitySeeTime = engine->GetTime();
+	m_numEntitiesLeft++;
+
+	m_breakableEntity = best;
+	m_breakableOrigin = m_entityOrigin;
+
+	if (m_currentProcess == Process::Default)
+		SetProcess(Process::DestroyBreakable, "destroying visible lasermine", true, engine->GetTime() + 60.0f);
+}
+
 void Bot::FindEnemyEntities(void)
 {
 	m_numEntitiesLeft = 0;
@@ -302,6 +416,8 @@ void Bot::FindEnemyEntities(void)
 		m_entityDistance = csqrtf(m_entityDistance);
 		m_entitySeeTime = engine->GetTime();
 	}
+
+	FindVisibleLasermines();
 }
 
 // this function will return true if weapon was fired, false otherwise
@@ -457,13 +573,24 @@ void Bot::KnifeAttack(void)
 	edict_t* entity = nullptr;
 	float distance = 9999.0f;
 
-	if (m_hasEnemiesNear && !FNullEnt(m_nearestEnemy))
+	if (ShouldPrioritizeLasermines()
+		&& !FNullEnt(m_breakableEntity)
+		&& IsEnemyLasermine(m_breakableEntity)
+		&& IsLasermineInLineOfSight(m_breakableEntity)
+		&& m_breakableOrigin != nullvec
+		&& (pev->origin - m_breakableOrigin).GetLengthSquared2D() < squaredf(ebot_zombie_lasermine_max_distance.GetFloat()))
+	{
+		entity = m_breakableEntity;
+		distance = (pev->origin - m_breakableOrigin).GetLengthSquared2D();
+	}
+
+	if (FNullEnt(entity) && m_hasEnemiesNear && !FNullEnt(m_nearestEnemy))
 	{
 		entity = m_nearestEnemy;
 		distance = (pev->origin - GetEntityOrigin(m_nearestEnemy)).GetLengthSquared2D();
 	}
 
-	if (!FNullEnt(m_breakableEntity) && m_breakableOrigin != nullvec)
+	if (FNullEnt(entity) && !FNullEnt(m_breakableEntity) && m_breakableOrigin != nullvec)
 	{
 		const float breakableDist = (pev->origin - m_breakableOrigin).GetLengthSquared2D();
 		if (breakableDist < distance)
@@ -621,7 +748,7 @@ void Bot::SelectKnife(void)
 	m_currentWeapon = Weapon::Knife;
 }
 
-void Bot::SelectBestWeapon(void)
+void Bot::SelectBestWeapon(const bool force)
 {
 	if (m_isZombieBot)
 	{
@@ -629,7 +756,7 @@ void Bot::SelectBestWeapon(void)
 		return;
 	}
 
-	if (!m_isSlowThink)
+	if (!force && !m_isSlowThink)
 		return;
 	
 	int i, id;
